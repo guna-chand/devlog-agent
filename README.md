@@ -1,36 +1,85 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# DevLog Agent
 
-## Getting Started
+DevLog Agent turns daily developer logs into weekly summaries using OpenAI. Includes Overview, Logs, and Agents screens.
 
-First, run the development server:
+## Quick start
+
+1. Install deps
+
+```bash
+npm install
+```
+
+2. Create `.env.local`
+
+```bash
+OPENAI_API_KEY=<key>
+```
+
+3. Run
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Visit http://localhost:3000 for Overview, /logs for Logs, and /agents for Agents.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## How to get an OPENAI_API_KEY
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Sign in at https://platform.openai.com/
+2. Navigate to https://platform.openai.com/api-keys
+3. Click “Create new secret key” and name it (e.g. DevLog Agent)
+4. Copy the key once displayed (you can't see it again) and paste into `.env.local`
 
-## Learn More
+## Summarization pipeline (LangChain + fallback)
 
-To learn more about Next.js, take a look at the following resources:
+The `app/api/summarize/route.ts` endpoint uses **LangChain chain**:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1. Zod schema defines required fields: `summary`, `bullets`, `blockers`, `nextSteps`, `themes`.
+2. A prompt template injects raw logs + format instructions.
+3. `ChatOpenAI` model (`gpt-4o-mini` by default) generates structured JSON.
+4. LangChain's structured output parser validates and returns typed data.
+5. Local heuristic analysis (regex + pattern matching) fills any missing arrays and computes metrics (`daysCovered`, `dayRangeLabel`, `entriesParsed`).
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Returned fields:
 
-## Deploy on Vercel
+| Field           | Meaning                                                |
+| --------------- | ------------------------------------------------------ |
+| `summary`       | Concise weekly-style paragraph                         |
+| `bullets`       | Key progress line items                                |
+| `blockers`      | Detected issues                                        |
+| `nextSteps`     | Suggested follow‑ups derived from experiments/progress |
+| `themes`        | High-level focus tags (performance, ux, auth, etc.)    |
+| `daysCovered`   | Number of distinct date stamps in logs                 |
+| `dayRangeLabel` | Human-friendly weekday span (e.g. `Mon – Wed`)         |
+| `entriesParsed` | Total non-empty lines parsed                           |
+| `source`        | `langchain` or `fallback`                              |
+| `fallback`      | Boolean legacy flag (kept for compatibility)           |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Testing the API quickly
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+There is a helper script: `scripts/test-summarize.mjs`.
+
+### Run with sample logs
+
+```bash
+npm run test:api
+```
+
+### Pipe custom logs via stdin
+
+```bash
+echo "2025-01-13 Did initial refactor\n2025-01-14 Fixed query latency" | npm run test:api --silent
+```
+
+### Use a logs file
+
+```bash
+npm run test:api -- ./my-week.txt
+```
+
+### Point at a different URL / port
+
+```bash
+URL=http://localhost:3001/api/summarize npm run test:api
+```
